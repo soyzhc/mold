@@ -1921,6 +1921,86 @@ inline i64 InputSection<I386>::get_addend(const ElfRel<I386> &rel) const {
 
 template <>
 inline i64 InputSection<ARM32>::get_addend(const ElfRel<ARM32> &rel) const {
+  u8 *loc = (u8 *)contents.data() + rel.r_offset;
+
+  // Returns [hi:lo] bits of val.
+  auto bits = [](u64 val, u64 hi, u64 lo) -> i64 {
+    return (val >> lo) & (((u64)1 << (hi - lo + 1)) - 1);
+  };
+
+  // Returns sign-extended [hi:lo] bits of val.
+  auto sbits = [&](u64 val, u64 hi, u64 lo) -> i64 {
+    return (bits(val, hi, lo) << (63 - hi)) >> (63 - hi);
+  };
+
+  switch (rel.r_type) {
+  case R_ARM_NONE:
+  case R_ARM_PC24:
+  case R_ARM_ABS32:
+  case R_ARM_REL32:
+  case R_ARM_LDR_PC_G0:
+  case R_ARM_SBREL32:
+  case R_ARM_THM_CALL:
+  case R_ARM_THM_PC8:
+  case R_ARM_TLS_DESC:
+  case R_ARM_TLS_DTPMOD32:
+  case R_ARM_TLS_DTPOFF32:
+  case R_ARM_TLS_TPOFF32:
+  case R_ARM_GOTOFF32:
+  case R_ARM_BASE_PREL:
+  case R_ARM_GOT_BREL:
+  case R_ARM_CALL:
+  case R_ARM_JUMP24:
+  case R_ARM_THM_JUMP24:
+  case R_ARM_BASE_ABS:
+  case R_ARM_TARGET1:
+  case R_ARM_SBREL31:
+  case R_ARM_V4BX:
+  case R_ARM_TARGET2:
+  case R_ARM_PREL31:
+  case R_ARM_MOVW_ABS_NC:
+  case R_ARM_MOVT_ABS:
+  case R_ARM_MOVW_PREL_NC:
+  case R_ARM_MOVT_PREL:
+  case R_ARM_THM_MOVW_ABS_NC:
+  case R_ARM_THM_MOVT_ABS:
+  case R_ARM_THM_MOVW_PREL_NC:
+  case R_ARM_THM_MOVT_PREL:
+  case R_ARM_THM_JUMP19:
+  case R_ARM_THM_JUMP6:
+  case R_ARM_THM_ALU_PREL_11_0:
+  case R_ARM_THM_PC12:
+  case R_ARM_ALU_PC_G0_NC:
+  case R_ARM_ALU_PC_G0:
+  case R_ARM_ALU_PC_G1_NC:
+  case R_ARM_ALU_PC_G1:
+  case R_ARM_ALU_PC_G2:
+  case R_ARM_LDR_PC_G1:
+  case R_ARM_LDR_PC_G2:
+  case R_ARM_LDRS_PC_G0:
+  case R_ARM_LDRS_PC_G1:
+  case R_ARM_LDRS_PC_G2:
+  case R_ARM_MOVW_BREL_NC:
+  case R_ARM_MOVT_BREL:
+  case R_ARM_MOVW_BREL:
+  case R_ARM_THM_MOVW_BREL_NC:
+  case R_ARM_THM_MOVT_BREL:
+  case R_ARM_THM_MOVW_BREL:
+  case R_ARM_TLS_GOTDESC:
+  case R_ARM_TLS_CALL:
+  case R_ARM_TLS_DESCSEQ:
+  case R_ARM_THM_TLS_CALL:
+  case R_ARM_GOT_PREL:
+  case R_ARM_THM_JUMP11:
+  case R_ARM_THM_JUMP8:
+  case R_ARM_TLS_GD32:
+  case R_ARM_TLS_LDM32:
+  case R_ARM_TLS_LDO32:
+  case R_ARM_TLS_IE32:
+  case R_ARM_TLS_LE32:
+  case R_ARM_TLS_LDO12:
+    return 0;
+  }
   unreachable();
 }
 
