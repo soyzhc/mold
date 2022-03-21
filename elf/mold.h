@@ -1923,14 +1923,17 @@ template <>
 inline i64 InputSection<ARM32>::get_addend(const ElfRel<ARM32> &rel) const {
   u8 *loc = (u8 *)contents.data() + rel.r_offset;
 
+  auto bit = [](u32 val, i64 pos) -> i32 {
+    return (val >> pos) & 1;
+  };
+
   // Returns [hi:lo] bits of val.
-  auto bits = [](u64 val, u64 hi, u64 lo) -> i64 {
+  auto bits = [](u64 val, i64 hi, i64 lo) -> i32 {
     return (val >> lo) & (((u64)1 << (hi - lo + 1)) - 1);
   };
 
-  // Returns sign-extended [hi:lo] bits of val.
-  auto sbits = [&](u64 val, u64 hi, u64 lo) -> i64 {
-    return (bits(val, hi, lo) << (63 - hi)) >> (63 - hi);
+  auto sign_extend = [](u64 val, i64 size) -> i32 {
+    return (i64)(val << (63 - size)) >> (63 - size);
   };
 
   switch (rel.r_type) {
@@ -1940,7 +1943,18 @@ inline i64 InputSection<ARM32>::get_addend(const ElfRel<ARM32> &rel) const {
   case R_ARM_REL32:
   case R_ARM_LDR_PC_G0:
   case R_ARM_SBREL32:
-  case R_ARM_THM_CALL:
+    return 0;
+  case R_ARM_THM_CALL: {
+    u32 S = bit(*(u16 *)loc, 10);
+    u32 J1 = bit(*(u16 *)(loc + 2), 13);
+    u32 J2 = bit(*(u16 *)(loc + 2), 11);
+    u32 I1 = !(J1 ^ S);
+    u32 I2 = !(J2 ^ S);
+    u32 imm10 = bits(*(u16 *)loc, 9, 0);
+    u32 imm11 = bits(*(u16 *)(loc + 2), 10, 0);
+    u32 val = (S << 24) | (I1 << 23) | (I2 << 22) | (imm10 << 12) | (imm11 << 1);
+    return sign_extend(val, 25);
+  }
   case R_ARM_THM_PC8:
   case R_ARM_TLS_DESC:
   case R_ARM_TLS_DTPMOD32:

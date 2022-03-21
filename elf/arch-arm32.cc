@@ -7,6 +7,15 @@ namespace mold::elf {
 
 using E = ARM32;
 
+static u32 bit(u32 val, i64 pos) {
+  return (val >> pos) & 1;
+}
+
+// Returns [hi:lo] bits of val.
+static u32 bits(u32 val, i64 hi, i64 lo) {
+  return (val >> lo) & ((1LL << (hi - lo + 1)) - 1);
+}
+
 template <>
 void PltSection<E>::copy_buf(Context<E> &ctx) {
   u8 *buf = ctx.buf + this->shdr.sh_offset;
@@ -84,6 +93,7 @@ void InputSection<E>::apply_reloc_alloc(Context<E> &ctx, u8 *base) {
 #define S   (frag_ref ? frag_ref->frag->get_addr(ctx) : sym.get_addr(ctx))
 #define A   (frag_ref ? frag_ref->addend : this->get_addend(rel))
 #define P   (output_section->shdr.sh_addr + offset + rel.r_offset)
+#define T   (sym.esym().st_type == STT_FUNC && (sym.get_addr(ctx) & 1))
 #define G   (sym.get_got_addr(ctx) - ctx.got->shdr.sh_addr)
 #define GOT ctx.got->shdr.sh_addr
 
@@ -103,6 +113,35 @@ void InputSection<E>::apply_reloc_alloc(Context<E> &ctx, u8 *base) {
     case R_ARM_REL32:
       *(u32 *)loc = S + A - P;
       continue;
+    case R_ARM_THM_CALL: {
+      u32 val = S + A - P;
+      u32 sign = bit(val, 24);
+      u32 I1 = bit(val, 23);
+      u32 I2 = bit(val, 22);
+      u32 J1 = !I1 ^ sign;
+      u32 J2 = !I2 ^ sign;
+      u32 imm10H = bits(val, 21, 12);
+      u32 imm10L = bits(val, 11, 2);
+      u32 imm11 = bits(val, 11, 1);
+
+      SyncOut(ctx) << "val=0x" << std::hex << val
+                   << " sign=" << sign
+                   << " I1=" << I1
+                   << " I2=" << I2
+                   << " J1=" << J1
+                   << " J2=" << J2;
+
+      *(u16 *)loc = (*(u16 *)loc & 0xf800) | (sign << 10) | imm10H;
+
+      // R_ARM_THUM_CALL is used for BL or BLX instructions. BL and BLX
+      // differ only at bit 12. We need to use BLX if we are switching
+      // from THUMB to ARM.
+      if (T)
+        *(u16 *)(loc + 2) = 0xd000 | (J1 << 13) | (1 << 12) | (J2 << 11) | imm11;
+      else
+        *(u16 *)(loc + 2) = 0xc000 | (J1 << 13) | (J2 << 11) | (imm10L << 1);
+      continue;
+    }
     case R_ARM_BASE_PREL:
       *(u32 *)loc = GOT + A - P;
       continue;
@@ -134,6 +173,7 @@ void InputSection<E>::apply_reloc_alloc(Context<E> &ctx, u8 *base) {
 #undef S
 #undef A
 #undef P
+#undef T
 #undef G
 #undef GOT
   }
@@ -181,6 +221,16 @@ void InputSection<E>::scan_relocations(Context<E> &ctx) {
     case R_ARM_REL32:
     case R_ARM_BASE_PREL:
       break;
+    case R_ARM_THM_CALL: {
+      Action table[][4] = {
+        // Absolute  Local  Imported data  Imported code
+        {  NONE,     NONE,  PLT,           PLT    },     // DSO
+        {  NONE,     NONE,  PLT,           PLT    },     // PIE
+        {  NONE,     NONE,  PLT,           PLT    },     // PDE
+      };
+      dispatch(ctx, table, i, rel, sym);
+      break;
+    }
     case R_ARM_GOT_BREL:
       sym.flags |= NEEDS_GOT;
       break;

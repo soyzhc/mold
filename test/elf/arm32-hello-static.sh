@@ -10,12 +10,10 @@ mold="$(pwd)/mold"
 t=out/test/elf/$testname
 mkdir -p $t
 
-[ "$(uname -m)" = x86_64 ] || { echo skipped; exit; }
-
-echo 'int main() {}' | arm-linux-gnueabi-gcc -o $t/exe -xc - >& /dev/null \
+echo 'int main() {}' | arm-linux-gnueabihf-gcc -o $t/exe -xc - >& /dev/null \
   || { echo skipped; exit; }
 
-cat <<EOF | arm-linux-gnueabi-gcc -o $t/a.o -c -g -xc -
+cat <<EOF | arm-linux-gnueabihf-gcc -o $t/a.o -c -g -xc -
 #include <stdio.h>
 
 int main() {
@@ -24,12 +22,11 @@ int main() {
 }
 EOF
 
-arm-linux-gnueabi-gcc -B. -o $t/exe $t/a.o
+arm-linux-gnueabihf-gcc -B. -o $t/exe $t/a.o -L/usr/arm-linux-gnueabihf/lib \
+  -Wl,-rpath,/usr/arm-linux-gnueabihf/lib
 
 # readelf -p .comment $t/exe | grep -qw mold
-
-# readelf -a $t/exe > $t/log
-grep -Eq 'Machine:\s+ARM' $t/log
-qemu-arm -L /usr/arm-linux-gnueabi $t/exe | grep -q 'Hello world'
+readelf -a $t/exe | grep -Eq 'Machine:\s+ARM'
+$t/exe | grep -q 'Hello world'
 
 echo OK
